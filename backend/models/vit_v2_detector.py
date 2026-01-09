@@ -34,7 +34,7 @@ class ViTv2Detector:
         else:
             self.device = torch.device(device)
         
-        print(f"[ViT-v2] Loading model on {self.device}...")
+        print(f"Loading model on {self.device}")
         
         # Load processor and model
         self.processor = ViTImageProcessor.from_pretrained(
