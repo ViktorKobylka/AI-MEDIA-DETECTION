@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Models 
+*.pth
+*.pt
+*.bin
+*.onnx
+*.safetensors
+backend/models/cache/
+backend/models/weights/
+*.model
+
+# Hugging Face cache
+.cache/
+transformers_cache/
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test data (if large)
+tests/test_images/*.jpg
+tests/test_images/*.png
+!tests/test_images/README.md
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Coverage
+htmlcov/
+.coverage
+.pytest_cache/
