@@ -35,15 +35,22 @@ const UploadArea = ({ onFileSelect }) => {
   };
 
   const handleFile = (file) => {
+    // Check if file is image or video
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
     // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+    if (!isImage && !isVideo) {
+      alert('Please select an image or video file');
       return;
     }
+    
+    // Validate file size
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 16 * 1024 * 1024; // 50MB for video, 16MB for image
+    const maxSizeText = isVideo ? '50MB' : '16MB';
 
-    // Validate file size (16MB max)
-    if (file.size > 16 * 1024 * 1024) {
-      alert('File too large. Maximum size is 16MB');
+    if (file.size > maxSize) {
+      alert(`File too large. Maximum size is ${maxSizeText}`);
       return;
     }
 
@@ -68,12 +75,13 @@ const UploadArea = ({ onFileSelect }) => {
           Click to browse or drag and drop
         </p>
         <small className="text-muted">
-          PNG, JPG, JPEG, WEBP (max 16MB)
+          PNG, JPG, JPEG, WEBP (max 16MB)<br/>
+          Videos: MP4, AVI, MOV (max 50MB)
         </small>
         <input
           id="fileInput"
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           onChange={handleFileInput}
           style={{ display: 'none' }}
         />
