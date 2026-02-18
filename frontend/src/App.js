@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import UploadArea from './components/UploadArea';
 import ImagePreview from './components/ImagePreview';
+import VideoPreview from './components/VideoPreview';
 import Results from './components/Results';
-import { checkHealth, detectImage } from './services/api';
+import VideoResults from './components/VideoResults';
+import { checkHealth, detectImage, detectVideo } from './services/api';
 import './App.css';
 
 function App() {
@@ -49,6 +51,9 @@ function App() {
     setError(null);
   };
 
+  // Check if file is video
+  const isVideo = selectedFile && selectedFile.type.startsWith('video/');
+
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
@@ -57,12 +62,19 @@ function App() {
     setResult(null);
 
     try {
-      const detectionResult = await detectImage(selectedFile);
+      let response;
       
-      if (detectionResult.success) {
-        setResult(detectionResult);
+      // Choose API based on file type
+      if (isVideo) {
+        response = await detectVideo(selectedFile);
       } else {
-        setError(detectionResult.error || 'Detection failed');
+        response = await detectImage(selectedFile);
+      }
+
+      if (response.success) {
+        setResult(response);
+      } else {
+        setError(response.error || 'Detection failed');
       }
     } catch (err) {
       setError(err.message);
@@ -80,12 +92,38 @@ function App() {
             AI Media Detector
           </h1>
           <p className="text-center mb-0">
-            Upload an image to detect if it's AI-generated 
+            Upload an image or video to detect if it's AI-generated
           </p>
         </Container>
       </div>
 
       <Container>
+        {/* API Status Alert */}
+        {apiStatus !== 'ready' && (
+          <Alert variant={apiStatus === 'offline' ? 'danger' : 'warning'} className="mb-4">
+            <div className="d-flex justify-content-between align-items-center">
+              <div>
+                {apiStatus === 'checking' && ' Checking API status'}
+                {apiStatus === 'offline' && 'Cannot connect to API'}
+                {apiStatus === 'not-ready' && ' API is running but detector is not ready'}
+              </div>
+              <Button 
+                variant="outline-light" 
+                size="sm"
+                onClick={checkApiHealth}
+              >
+                Retry
+              </Button>
+            </div>
+          </Alert>
+        )}
+
+        {apiStatus === 'ready' && (
+          <Alert variant="success" className="mb-4">
+            ✓ API is ready
+          </Alert>
+        )}
+
         <Row>
           <Col lg={6} className="mx-auto">
             {/* Upload Area */}
@@ -93,13 +131,19 @@ function App() {
               <UploadArea onFileSelect={handleFileSelect} />
             )}
 
-            {/* Image Preview */}
+            {/* Image/Video Preview */}
             {selectedFile && (
-              <ImagePreview 
-                file={selectedFile}
-                imageUrl={imageUrl}
-                onRemove={handleRemove}
-              />
+              <>
+                {isVideo ? (
+                  <VideoPreview file={selectedFile} />
+                ) : (
+                  <ImagePreview 
+                    file={selectedFile}
+                    imageUrl={imageUrl}
+                    onRemove={handleRemove}
+                  />
+                )}
+              </>
             )}
 
             {/* Analyze Button */}
@@ -121,10 +165,10 @@ function App() {
                         aria-hidden="true"
                         className="me-2"
                       />
-                      Analyzing...
+                      {isVideo ? 'Analyzing Video...' : 'Analyzing...'}
                     </>
                   ) : (
-                    'Analyze Image'
+                    `Analyze ${isVideo ? 'Video' : 'Image'}`
                   )}
                 </Button>
               </div>
@@ -140,13 +184,17 @@ function App() {
             {/* Results */}
             {result && (
               <>
-                <Results result={result} />
+                {isVideo ? (
+                  <VideoResults result={result} />
+                ) : (
+                  <Results result={result} />
+                )}
                 <div className="d-grid mt-3">
                   <Button 
                     variant="outline-primary"
                     onClick={handleRemove}
                   >
-                    Analyze Another Image
+                    Analyze Another {isVideo ? 'Video' : 'Image'}
                   </Button>
                 </div>
               </>
@@ -159,10 +207,10 @@ function App() {
           <div className="mb-3">
             <h6 className="text-muted mb-2">About This Application</h6>
             <p className="text-muted mb-1" style={{ fontSize: '0.9rem' }}>
-              This system detects AI-generated images and deepfakes using advanced ensemble learning.
+              This system detects AI-generated images, videos using advanced ensemble learning.
             </p>
             <p className="text-muted mb-1" style={{ fontSize: '0.9rem' }}>
-              <strong>Detects:</strong> StyleGAN faces, face swaps, GAN-generated images, and photorealistic deepfakes
+              <strong>Detects:</strong> StyleGAN faces, face swaps, GAN-generated images, videos and photorealistic deepfakes
             </p>
           </div>
         </div>
