@@ -70,7 +70,7 @@ const UploadArea = ({ onFileSelect }) => {
         <div className="upload-icon mb-3">
           <i className="bi bi-cloud-upload" style={{ fontSize: '3rem' }}></i>
         </div>
-        <h5>Upload Image</h5>
+        <h5>Upload Image or Video</h5>
         <p className="text-muted">
           Click to browse or drag and drop
         </p>

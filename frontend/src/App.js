@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
 import UploadArea from './components/UploadArea';
 import ImagePreview from './components/ImagePreview';
 import VideoPreview from './components/VideoPreview';
 import Results from './components/Results';
 import VideoResults from './components/VideoResults';
-import { checkHealth, detectImage, detectVideo } from './services/api';
+import { detectImage, detectVideo } from './services/api';
 import './App.css';
 
 function App() {
@@ -14,25 +14,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [apiStatus, setApiStatus] = useState('checking');
 
-  // Check API health on mount
-  useEffect(() => {
-    checkApiHealth();
-  }, []);
-
-  const checkApiHealth = async () => {
-    try {
-      const health = await checkHealth();
-      if (health.status === 'ok' && health.detector_ready) {
-        setApiStatus('ready');
-      } else {
-        setApiStatus('not-ready');
-      }
-    } catch (err) {
-      setApiStatus('offline');
-    }
-  };
 
   const handleFileSelect = (file) => {
     setSelectedFile(file);
@@ -98,32 +80,6 @@ function App() {
       </div>
 
       <Container>
-        {/* API Status Alert */}
-        {apiStatus !== 'ready' && (
-          <Alert variant={apiStatus === 'offline' ? 'danger' : 'warning'} className="mb-4">
-            <div className="d-flex justify-content-between align-items-center">
-              <div>
-                {apiStatus === 'checking' && ' Checking API status'}
-                {apiStatus === 'offline' && 'Cannot connect to API'}
-                {apiStatus === 'not-ready' && ' API is running but detector is not ready'}
-              </div>
-              <Button 
-                variant="outline-light" 
-                size="sm"
-                onClick={checkApiHealth}
-              >
-                Retry
-              </Button>
-            </div>
-          </Alert>
-        )}
-
-        {apiStatus === 'ready' && (
-          <Alert variant="success" className="mb-4">
-            ✓ API is ready
-          </Alert>
-        )}
-
         <Row>
           <Col lg={6} className="mx-auto">
             {/* Upload Area */}
@@ -153,7 +109,7 @@ function App() {
                   variant="primary" 
                   size="lg"
                   onClick={handleAnalyze}
-                  disabled={loading || apiStatus !== 'ready'}
+                  disabled={loading}
                 >
                   {loading ? (
                     <>
