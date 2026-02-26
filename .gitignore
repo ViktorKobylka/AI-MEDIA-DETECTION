@@ -55,7 +55,7 @@ logs/
 # Environment variables
 .env
 .env.local
-.env.production
+.env.*.local
 
 # OS
 Thumbs.db
