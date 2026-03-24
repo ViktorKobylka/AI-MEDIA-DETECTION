@@ -14,6 +14,9 @@ from datetime import datetime
 from models.ensemble import EnsembleDetector
 from video_processor import VideoProcessor
 from video_aggregator import VideoAggregator
+from database import db_config
+from models.db_models import DetectionResult
+from utils.hash_utils import calculate_file_hash
 import time
 
 # Initialize Flask app
@@ -37,6 +40,12 @@ app.config['ALLOWED_VIDEO_EXTENSIONS'] = {'mp4', 'avi', 'mov'}
 
 # Create upload folder
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Initialize database
+print("Connecting to database...")
+db_connected = db_config.connect()
+if not db_connected:
+    print("Database not available")
 
 # Initialize detector once on startup
 print("Initializing detector...")
@@ -89,7 +98,7 @@ def health():
 @app.route('/api/detect', methods=['POST'])
 def detect():
     """
-    Image detection endpoint
+    Image detection endpoint with hash-based caching
     
     Request: multipart/form-data with 'file'
     Response: JSON with detection results
@@ -114,6 +123,27 @@ def detect():
         }), 400
     
     try:
+        # Calculate file hash
+        file_hash = calculate_file_hash(file)
+        
+        # Check if already processed (if database connected)
+        if db_connected:
+            existing_result = DetectionResult.find_by_hash(file_hash)
+            if existing_result:
+                print(f"✓ Cache hit for hash: {file_hash[:16]}...")
+                return jsonify({
+                    'success': True,
+                    'cached': True,
+                    'verdict': existing_result['verdict'],
+                    'confidence': existing_result['confidence'],
+                    'fake_probability': existing_result['fake_probability'],
+                    'real_probability': existing_result['real_probability'],
+                    'agreement_level': existing_result.get('agreement_level'),
+                    'content_type': existing_result['content_type'],
+                    'individual_results': existing_result.get('individual_results', []),
+                    'timestamp': existing_result['timestamp'].isoformat()
+                })
+        
         # Clean up old files
         cleanup_old_files()
         
@@ -127,22 +157,39 @@ def detect():
         # Run detection
         result = detector.predict(filepath)
         
+        # Prepare response
+        response_data = {
+            'success': True,
+            'cached': False,
+            'verdict': result['verdict'],
+            'confidence': result['confidence'],
+            'fake_probability': result['fake_probability'],
+            'real_probability': result['real_probability'],
+            'agreement_level': result['agreement_level'],
+            'content_type': 'image',
+            'individual_results': result['individual_results']
+        }
+        
+        # Save to database (if connected)
+        if db_connected:
+            try:
+                DetectionResult.create(
+                    file_hash=file_hash,
+                    filename=file.filename,
+                    content_type='image',
+                    result_data=response_data
+                )
+                print(f"✓ Saved to database: {file_hash[:16]}...")
+            except Exception as db_error:
+                print(f"⚠ Database save failed: {db_error}")
+        
         # Clean up
         try:
             os.remove(filepath)
         except:
             pass
         
-        return jsonify({
-            'success': True,
-            'verdict': result['verdict'],
-            'confidence': result['confidence'],
-            'fake_probability': result['fake_probability'],
-            'real_probability': result['real_probability'],
-            'agreement_level': result['agreement_level'],
-            'individual_results': result['individual_results'],
-            'recommendation': result['recommendation']
-        })
+        return jsonify(response_data)
     
     except Exception as e:
         # Clean up on error
@@ -188,6 +235,33 @@ def detect_video():
     filepath = None
     
     try:
+        # Calculate file hash
+        file_hash = calculate_file_hash(file)
+        
+        # Check if already processed (if database connected)
+        if db_connected:
+            existing_result = DetectionResult.find_by_hash(file_hash)
+            if existing_result:
+                print(f"✓ Cache hit for video hash: {file_hash[:16]}...")
+                return jsonify({
+                    'success': True,
+                    'cached': True,
+                    'content_type': 'video',
+                    'verdict': existing_result['verdict'],
+                    'confidence': existing_result['confidence'],
+                    'fake_probability': existing_result['fake_probability'],
+                    'real_probability': existing_result['real_probability'],
+                    'video_info': existing_result.get('video_info', {}),
+                    'analysis': existing_result.get('analysis', {}),
+                    'agreement_level': existing_result.get('agreement_level'),
+                    'confidence_timeline': existing_result['full_result'].get('confidence_timeline', []),
+                    'suspicious_frames': existing_result.get('suspicious_frames', []),
+                    'model_breakdown': existing_result['full_result'].get('model_breakdown', []),
+                    'processing_time_seconds': existing_result.get('processing_time', 0),
+                    'frames_analyzed': existing_result.get('frames_analyzed', 0),
+                    'timestamp': existing_result['timestamp'].isoformat()
+                })
+        
         # Clean up old files
         cleanup_old_files()
         
@@ -266,9 +340,10 @@ def detect_video():
         except:
             pass
         
-        # Return results
-        return jsonify({
+        # Prepare response
+        response_data = {
             'success': True,
+            'cached': False,
             'content_type': 'video',
             'verdict': aggregated['verdict'],
             'confidence': aggregated['confidence'],
@@ -282,7 +357,23 @@ def detect_video():
             'model_breakdown': aggregated['model_breakdown'],
             'processing_time_seconds': round(processing_time, 2),
             'frames_analyzed': len(frames)
-        })
+        }
+        
+        # Save to database (if connected)
+        if db_connected:
+            try:
+                DetectionResult.create(
+                    file_hash=file_hash,
+                    filename=file.filename,
+                    content_type='video',
+                    result_data=response_data
+                )
+                print(f"✓ Saved video to database: {file_hash[:16]}...")
+            except Exception as db_error:
+                print(f"⚠ Database save failed: {db_error}")
+        
+        # Return results
+        return jsonify(response_data)
     
     except Exception as e:
         # Clean up on error
@@ -303,6 +394,121 @@ def detect_video():
         return jsonify({
             'success': False,
             'error': f'Video processing failed: {str(e)}'
+        }), 500
+
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    """
+    Get detection history
+    
+    Query params:
+    - limit: Number of results (default 50, max 100)
+    - content_type: Filter by 'image' or 'video'
+    - verdict: Filter by 'FAKE', 'REAL', or 'UNCERTAIN'
+    
+    Response: JSON with list of past detections
+    """
+    if not db_connected:
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
+    try:
+        # Get query parameters
+        limit = min(int(request.args.get('limit', 50)), 100)
+        content_type = request.args.get('content_type')
+        verdict = request.args.get('verdict')
+        
+        # Get history
+        history = DetectionResult.get_history(
+            limit=limit,
+            content_type=content_type,
+            verdict=verdict
+        )
+        
+        return jsonify({
+            'success': True,
+            'count': len(history),
+            'results': history
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to retrieve history: {str(e)}'
+        }), 500
+
+
+@app.route('/api/search', methods=['POST'])
+def search_detections():
+    """
+    Search detection results by filename
+    
+    Request: JSON with 'query' field
+    Response: JSON with matching results
+    """
+    if not db_connected:
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data or 'query' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Query text required'
+            }), 400
+        
+        query_text = data['query']
+        limit = min(int(data.get('limit', 20)), 50)
+        
+        # Search
+        results = DetectionResult.search(query_text, limit=limit)
+        
+        return jsonify({
+            'success': True,
+            'query': query_text,
+            'count': len(results),
+            'results': results
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Search failed: {str(e)}'
+        }), 500
+
+
+@app.route('/api/statistics', methods=['GET'])
+def get_statistics():
+    """
+    Get overall detection statistics
+    
+    Response: JSON with stats summary
+    """
+    if not db_connected:
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
+    try:
+        stats = DetectionResult.get_statistics()
+        
+        return jsonify({
+            'success': True,
+            'statistics': stats
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to retrieve statistics: {str(e)}'
         }), 500
 
 
