@@ -77,3 +77,52 @@ export const detectVideo = async (file) => {
     }
   }
 };
+
+
+/**
+ * Get detection history
+ */
+export const getHistory = async (params = {}) => {
+  try {
+    const queryParams = new URLSearchParams();
+    
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.content_type) queryParams.append('content_type', params.content_type);
+    if (params.verdict) queryParams.append('verdict', params.verdict);
+    
+    const response = await axios.get(`${API_BASE_URL}/history?${queryParams.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch history:', error);
+    throw new Error(error.response?.data?.error || 'Failed to fetch history');
+  }
+};
+
+/**
+ * Search detection results by filename
+ */
+export const searchDetections = async (query, limit = 20) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/search`, {
+      query,
+      limit
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Search failed:', error);
+    throw new Error(error.response?.data?.error || 'Search failed');
+  }
+};
+
+/**
+ * Get overall detection statistics
+ */
+export const getStatistics = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/statistics`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch statistics:', error);
+    throw new Error(error.response?.data?.error || 'Failed to fetch statistics');
+  }
+};
