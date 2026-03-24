@@ -1,162 +1,41 @@
 import React, { useState } from 'react';
-import { Container, Row, Col, Button, Alert, Spinner } from 'react-bootstrap';
-import UploadArea from './components/UploadArea';
-import ImagePreview from './components/ImagePreview';
-import VideoPreview from './components/VideoPreview';
-import Results from './components/Results';
-import VideoResults from './components/VideoResults';
-import { detectImage, detectVideo } from './services/api';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import Home from './pages/Home';
+import History from './pages/History';
 import './App.css';
 
+
 function App() {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-
-
-  const handleFileSelect = (file) => {
-    setSelectedFile(file);
-    setImageUrl(URL.createObjectURL(file));
-    setResult(null);
-    setError(null);
-  };
-
-  const handleRemove = () => {
-    if (imageUrl) {
-      URL.revokeObjectURL(imageUrl);
-    }
-    setSelectedFile(null);
-    setImageUrl(null);
-    setResult(null);
-    setError(null);
-  };
-
-  // Check if file is video
-  const isVideo = selectedFile && selectedFile.type.startsWith('video/');
-
-  const handleAnalyze = async () => {
-    if (!selectedFile) return;
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      let response;
-      
-      // Choose API based on file type
-      if (isVideo) {
-        response = await detectVideo(selectedFile);
-      } else {
-        response = await detectImage(selectedFile);
-      }
-
-      if (response.success) {
-        setResult(response);
-      } else {
-        setError(response.error || 'Detection failed');
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="App">
-      {/* Header */}
-      <div className="header bg-primary text-white py-4 mb-4">
-        <Container>
-          <h1 className="text-center mb-2">
-            AI Media Detector
-          </h1>
-          <p className="text-center mb-0">
-            Upload an image or video to detect if it's AI-generated
-          </p>
-        </Container>
-      </div>
+    <Router>
+      <div className="App">
+        {/* Header */}
+        <div className="header bg-primary text-white py-4 mb-4">
+          <div className="container">
+            <h1 className="text-center mb-2">
+              AI Media Detector
+            </h1>
+            <p className="text-center mb-0">
+              Upload an image or video to detect if it's AI-generated
+            </p>
+          </div>
+        </div>
 
-      <Container>
-        <Row>
-          <Col lg={6} className="mx-auto">
-            {/* Upload Area */}
-            {!selectedFile && (
-              <UploadArea onFileSelect={handleFileSelect} />
-            )}
+        {/* Navigation */}
+        <Navbar />
 
-            {/* Image/Video Preview */}
-            {selectedFile && (
-              <>
-                {isVideo ? (
-                  <VideoPreview file={selectedFile} />
-                ) : (
-                  <ImagePreview 
-                    file={selectedFile}
-                    imageUrl={imageUrl}
-                    onRemove={handleRemove}
-                  />
-                )}
-              </>
-            )}
-
-            {/* Analyze Button */}
-            {selectedFile && !result && (
-              <div className="d-grid mt-4">
-                <Button 
-                  variant="primary" 
-                  size="lg"
-                  onClick={handleAnalyze}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <Spinner
-                        as="span"
-                        animation="border"
-                        size="sm"
-                        role="status"
-                        aria-hidden="true"
-                        className="me-2"
-                      />
-                      {isVideo ? 'Analyzing Video...' : 'Analyzing...'}
-                    </>
-                  ) : (
-                    `Analyze ${isVideo ? 'Video' : 'Image'}`
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* Error Alert */}
-            {error && (
-              <Alert variant="danger" className="mt-4">
-                <strong>Error:</strong> {error}
-              </Alert>
-            )}
-
-            {/* Results */}
-            {result && (
-              <>
-                {isVideo ? (
-                  <VideoResults result={result} />
-                ) : (
-                  <Results result={result} />
-                )}
-                <div className="d-grid mt-3">
-                  <Button 
-                    variant="outline-primary"
-                    onClick={handleRemove}
-                  >
-                    Analyze Another {isVideo ? 'Video' : 'Image'}
-                  </Button>
-                </div>
-              </>
-            )}
-          </Col>
-        </Row>
+        {/* Routes */}
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/statistics" element={
+            <div className="container text-center py-5">
+              <h2>Statistics</h2>
+              <p className="text-muted">...</p>
+            </div>
+          } />
+        </Routes>
 
         {/* Footer */}
         <div className="text-center mt-5 mb-4">
@@ -170,8 +49,8 @@ function App() {
             </p>
           </div>
         </div>
-      </Container>
-    </div>
+      </div>
+    </Router>
   );
 }
 
