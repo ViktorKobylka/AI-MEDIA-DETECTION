@@ -29,6 +29,7 @@ const History = () => {
     if (!searchMode) {
       fetchHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, searchMode]);
 
   const fetchHistory = async () => {
