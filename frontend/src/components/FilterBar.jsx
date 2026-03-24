@@ -27,8 +27,8 @@ const FilterBar = ({ filters, onFilterChange }) => {
               onChange={(e) => handleChange('content_type', e.target.value)}
             >
               <option value="">All Types</option>
-              <option value="image">Images</option>
-              <option value="video">Videos</option>
+              <option value="image">📷 Images</option>
+              <option value="video">🎬 Videos</option>
             </Form.Select>
           </Form.Group>
         </Col>
