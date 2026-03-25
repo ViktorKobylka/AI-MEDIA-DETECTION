@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
@@ -10,31 +11,34 @@ function App() {
     <Router>
       <div className="App">
         {/* Header */}
-        <div className="header bg-primary text-white py-4 mb-4">
-          <div className="container">
-            <h1 className="text-center mb-2">
-              AI Media Detector
-            </h1>
-            <p className="text-center mb-0">
-              Upload an image or video to detect if it's AI-generated
-            </p>
+        <div className="header-navbar-wrapper">
+          <div className="header text-white py-4">
+            <div className="container">
+              <h1 className="text-center mb-2">
+                AI Media Detector
+              </h1>
+              <p className="text-center mb-0">
+                Upload an image or video to detect if it's AI-generated
+              </p>
+            </div>
           </div>
+          { /* Navigation */}
+          <Navbar />
         </div>
 
-        {/* Navigation */}
-        <Navbar />
-
         {/* Routes */}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/statistics" element={
-            <div className="container text-center py-5">
-              <h2>Statistics</h2>
-              <p className="text-muted">...</p>
-            </div>
-          } />
-        </Routes>
+        <div>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/statistics" element={
+              <div className="container text-center py-5">
+                <h2>Statistics</h2>
+                <p className="text-muted">Coming soon...</p>
+              </div>
+            } />
+          </Routes>
+        </div>
 
         {/* Footer */}
         <div className="text-center mt-5 mb-4">

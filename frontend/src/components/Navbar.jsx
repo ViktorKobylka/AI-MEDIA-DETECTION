@@ -12,20 +12,17 @@ const Navbar = () => {
   const location = useLocation();
 
   return (
-    <BootstrapNavbar bg="primary" variant="dark" expand="lg" className="mb-4">
+    <BootstrapNavbar variant="dark" expand="lg">
       <Container>
-        <BootstrapNavbar.Brand as={Link} to="/">
-          AI Media Detector
-        </BootstrapNavbar.Brand>
-        
         <BootstrapNavbar.Toggle aria-controls="navbar-nav" />
         
         <BootstrapNavbar.Collapse id="navbar-nav">
-          <Nav className="ms-auto">
+          <Nav className="mx-auto">
             <Nav.Link 
               as={Link} 
               to="/" 
               active={location.pathname === '/'}
+              className="px-4"
             >
               Home
             </Nav.Link>
@@ -34,6 +31,7 @@ const Navbar = () => {
               as={Link} 
               to="/history" 
               active={location.pathname === '/history'}
+              className="px-4"
             >
               History
             </Nav.Link>
@@ -42,6 +40,7 @@ const Navbar = () => {
               as={Link} 
               to="/statistics" 
               active={location.pathname === '/statistics'}
+              className="px-4"
             >
               Statistics
             </Nav.Link>
@@ -49,6 +48,7 @@ const Navbar = () => {
         </BootstrapNavbar.Collapse>
       </Container>
     </BootstrapNavbar>
+       
   );
 };
 
