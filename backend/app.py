@@ -303,6 +303,7 @@ def detect_dual():
 def aggregate_dual_results(sightengine_result, mobilenet_result):
     """
     Aggregate results from both detectors.
+    SightEngine has priority when available.
     
     Returns:
         tuple: (verdict, confidence, agreement_level)
@@ -315,13 +316,15 @@ def aggregate_dual_results(sightengine_result, mobilenet_result):
             'single_detector'
         )
     
+    # SightEngine available - it has priority
     se_verdict = sightengine_result['verdict']
     mn_verdict = mobilenet_result['verdict']
     se_conf = sightengine_result['confidence']
     mn_conf = mobilenet_result['confidence']
     
-    # If both agree
+    # Check agreement
     if se_verdict == mn_verdict:
+        # Both agree - use SightEngine verdict with averaged confidence
         avg_conf = (se_conf + mn_conf) / 2
         conf_diff = abs(se_conf - mn_conf)
         
@@ -331,12 +334,9 @@ def aggregate_dual_results(sightengine_result, mobilenet_result):
             agreement = 'agreement'
         
         return (se_verdict, round(avg_conf, 2), agreement)
-    
-    # If disagree, use higher confidence
-    if se_conf > mn_conf:
-        return (se_verdict, se_conf, 'disagreement')
     else:
-        return (mn_verdict, mn_conf, 'disagreement')
+        # Disagree - SightEngine takes priority
+        return (se_verdict, se_conf, 'disagreement')
 
 
 @app.route('/api/history', methods=['GET'])
