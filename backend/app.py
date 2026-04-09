@@ -440,22 +440,34 @@ def search_detections():
 @app.route('/api/statistics', methods=['GET'])
 def get_statistics():
     """
-    Get overall detection statistics
+    Get overall detection statistics + data collection stats
     
     Response: JSON with stats summary
     """
-    if not db_connected:
-        return jsonify({
-            'success': False,
-            'error': 'Database not available'
-        }), 503
-    
     try:
-        stats = DetectionResult.get_statistics()
+        stats_data = {}
+        
+        # Detection statistics (if database available)
+        if db_connected:
+            stats_data['detections'] = DetectionResult.get_statistics()
+        else:
+            stats_data['detections'] = None
+        
+        # Data collection statistics
+        if data_collector:
+            stats_data['collection'] = data_collector.get_statistics()
+        else:
+            stats_data['collection'] = None
+        
+        # API usage
+        if sightengine_api:
+            stats_data['api_usage'] = sightengine_api.get_usage_info()
+        else:
+            stats_data['api_usage'] = None
         
         return jsonify({
             'success': True,
-            'statistics': stats
+            'statistics': stats_data
         })
     
     except Exception as e:
