@@ -55,16 +55,6 @@ except Exception as e:
     print(f"✗ MobileNetV4 error: {e}")
     mobilenet_detector = None
 
-# SightEngine API will be initialized here later
-# Initialize MobileNetV4 detector
-print("Initializing MobileNetV4 detector...")
-try:
-    from models.mobilenet_wrapper import MobileNetDetector
-    mobilenet_detector = MobileNetDetector()
-    print("✓ MobileNetV4 ready!")
-except Exception as e:
-    print(f"✗ MobileNetV4 error: {e}")
-    mobilenet_detector = None
 
 # Initialize SightEngine API
 print("Initializing SightEngine API...")
@@ -77,6 +67,16 @@ except Exception as e:
     print(f"✗ SightEngine error: {e}")
     sightengine_api = None
 
+# Initialize Data Collector
+print("Initializing Data Collector...")
+try:
+    from services.data_collector import DataCollector
+    data_collector = DataCollector()
+    stats = data_collector.get_statistics()
+    print(f"✓ Data Collector ready! ({stats['total_collected']}/100 files collected)")
+except Exception as e:
+    print(f"✗ Data Collector error: {e}")
+    data_collector = None
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -259,6 +259,19 @@ def detect_dual():
             results['sightengine'],
             results['mobilenet']
         )
+
+        save_result = None
+        if data_collector and results['sightengine'].get('available'):
+            se_result = results['sightengine']
+            save_result = data_collector.save_file(
+                file_path=filepath,
+                label=se_result['verdict'],
+                confidence=se_result['confidence'],
+                source='sightengine'
+            )
+            if save_result['saved']:
+                print(f"✓ File saved for retraining: {save_result['hash']} ({save_result['label']})") 
+        
         
         # Prepare response
         response_data = {
@@ -273,7 +286,8 @@ def detect_dual():
                 'confidence': final_confidence,
                 'agreement': agreement
             },
-            'api_usage': sightengine_api.get_usage_info() if sightengine_api else None
+            'api_usage': sightengine_api.get_usage_info() if sightengine_api else None,
+            'data_collection': save_result
         }
         
         # Save to database (if connected)
