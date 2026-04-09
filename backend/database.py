@@ -26,7 +26,13 @@ class DatabaseConfig:
         
     def connect(self):
         try:
-            self.client = MongoClient(self.MONGO_URI, serverSelectionTimeoutMS=5000)
+            import certifi
+            
+            self.client = MongoClient(
+                self.MONGO_URI,
+                serverSelectionTimeoutMS=5000,
+                tlsCAFile=certifi.where()  
+            )
             
             # Test connection
             self.client.server_info()
@@ -37,7 +43,7 @@ class DatabaseConfig:
             # Create indexes
             self._create_indexes()
             
-            print(f"Connected to MongoDB: {self.DB_NAME}")
+            print(f"✓ Connected to MongoDB: {self.DB_NAME}")
             return True
             
         except ConnectionFailure as e:

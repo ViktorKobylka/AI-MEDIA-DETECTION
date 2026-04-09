@@ -12,46 +12,84 @@ class DetectionResult:
     @staticmethod
     def create(file_hash, filename, content_type, result_data):
         """
-        Create a new detection result
+        Save detection result to database
+        
+        Args:
+            file_hash: SHA-256 hash of file
+            filename: Original filename
+            content_type: 'image' or 'video'
+            result_data: Detection results dict
         """
         collection = get_detections_collection()
         
-        # Prepare document
+        # Extract core fields from result_data
+        final = result_data.get('final', {})
+        detectors = result_data.get('detectors', {})
+        
         document = {
             'file_hash': file_hash,
             'filename': filename,
             'content_type': content_type,
-            'verdict': result_data.get('verdict'),
-            'confidence': result_data.get('confidence'),
-            'fake_probability': result_data.get('fake_probability'),
-            'real_probability': result_data.get('real_probability'),
-            'timestamp': datetime.utcnow(),
-            'full_result': result_data
+            'verdict': final.get('verdict'),
+            'confidence': final.get('confidence'),
+            'fake_probability': None,  # Will calculate from detectors
+            'real_probability': None,
+            'timestamp': datetime.now(),
+            'full_result': result_data,
+            'agreement_level': final.get('agreement'),
+            'individual_results': []
         }
         
-        # Add content-specific fields
-        if content_type == 'image':
-            document['agreement_level'] = result_data.get('agreement_level')
-            document['individual_results'] = result_data.get('individual_results', [])
-            
-        elif content_type == 'video':
+        # Calculate average probabilities from both detectors
+        fake_probs = []
+        real_probs = []
+        
+        if detectors.get('sightengine', {}).get('available'):
+            se = detectors['sightengine']
+            fake_probs.append(se.get('fake_probability', 0))
+            real_probs.append(se.get('real_probability', 0))
+        
+        if detectors.get('mobilenet', {}).get('available'):
+            mn = detectors['mobilenet']
+            fake_probs.append(mn.get('fake_probability', 0))
+            real_probs.append(mn.get('real_probability', 0))
+        
+        if fake_probs:
+            document['fake_probability'] = round(sum(fake_probs) / len(fake_probs), 2)
+            document['real_probability'] = round(sum(real_probs) / len(real_probs), 2)
+        
+        # Add individual detector results
+        individual = []
+        
+        if detectors.get('sightengine', {}).get('available'):
+            individual.append({
+                'model': 'SightEngine',
+                'verdict': detectors['sightengine'].get('verdict'),
+                'confidence': detectors['sightengine'].get('confidence')
+            })
+        
+        if detectors.get('mobilenet', {}).get('available'):
+            individual.append({
+                'model': 'MobileNetV4',
+                'verdict': detectors['mobilenet'].get('verdict'),
+                'confidence': detectors['mobilenet'].get('confidence')
+            })
+        
+        document['individual_results'] = individual
+        
+        # Handle video-specific fields
+        if content_type == 'video':
             document['video_info'] = result_data.get('video_info', {})
-            document['analysis'] = result_data.get('analysis', {})
             document['frames_analyzed'] = result_data.get('frames_analyzed', 0)
-            document['agreement_level'] = result_data.get('agreement_level')
-            document['suspicious_frames'] = result_data.get('suspicious_frames', [])
             document['processing_time'] = result_data.get('processing_time_seconds', 0)
+            document['suspicious_frames'] = result_data.get('suspicious_frames', [])
         
         try:
-            # Insert document
-            result = collection.insert_one(document)
-            document['_id'] = str(result.inserted_id)
+            collection.insert_one(document)
             return document
-            
-        except DuplicateKeyError:
-            # File already exists
-            print(f"Duplicate file detected: {file_hash}")
-            return None
+        except Exception as e:
+            print(f"Error saving to database: {e}")
+            raise
     
     @staticmethod
     def find_by_hash(file_hash):
