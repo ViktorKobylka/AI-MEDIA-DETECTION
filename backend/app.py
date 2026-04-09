@@ -56,7 +56,26 @@ except Exception as e:
     mobilenet_detector = None
 
 # SightEngine API will be initialized here later
-sightengine_api = None
+# Initialize MobileNetV4 detector
+print("Initializing MobileNetV4 detector...")
+try:
+    from models.mobilenet_wrapper import MobileNetDetector
+    mobilenet_detector = MobileNetDetector()
+    print("✓ MobileNetV4 ready!")
+except Exception as e:
+    print(f"✗ MobileNetV4 error: {e}")
+    mobilenet_detector = None
+
+# Initialize SightEngine API
+print("Initializing SightEngine API...")
+try:
+    from services.sightengine_api import SightEngineAPI
+    sightengine_api = SightEngineAPI()
+    usage = sightengine_api.get_usage_info()
+    print(f"✓ SightEngine ready! ({usage['calls_used']}/{usage['calls_limit']} calls used)")
+except Exception as e:
+    print(f"✗ SightEngine error: {e}")
+    sightengine_api = None
 
 
 def allowed_file(filename):
@@ -153,8 +172,171 @@ def detect_mobilenet():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# Dual detection endpoint will be added here later
-# Video detection endpoint will be updated here later
+@app.route('/api/detect_dual', methods=['POST'])
+def detect_dual():
+    """
+    Dual detection endpoint: SightEngine + MobileNetV4
+    
+    Request: multipart/form-data with 'file'
+    Response: JSON with both detector results
+    """
+    if not mobilenet_detector:
+        return jsonify({
+            'success': False,
+            'error': 'MobileNetV4 detector not available'
+        }), 503
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid format. Allowed: {", ".join(app.config["ALLOWED_EXTENSIONS"])}'
+        }), 400
+    
+    filepath = None
+    
+    try:
+        # Calculate file hash
+        file_hash = calculate_file_hash(file)
+        
+        # Check cache (if database connected)
+        if db_connected:
+            existing_result = DetectionResult.find_by_hash(file_hash)
+            if existing_result:
+                print(f"✓ Cache hit for hash: {file_hash[:16]}...")
+                return jsonify({
+                    'success': True,
+                    'cached': True,
+                    'verdict': existing_result['verdict'],
+                    'confidence': existing_result['confidence'],
+                    'detectors': existing_result.get('detectors', {}),
+                    'final': existing_result.get('final', {}),
+                    'api_usage': existing_result.get('api_usage'),
+                    'timestamp': existing_result['timestamp'].isoformat()
+                })
+        
+        # Clean up old files
+        cleanup_old_files()
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{filename}")
+        file.save(filepath)
+        
+        # Run both detectors
+        results = {}
+        
+        # 1. SightEngine API
+        if sightengine_api:
+            sightengine_result = sightengine_api.detect_fake(filepath)
+            results['sightengine'] = sightengine_result
+        else:
+            results['sightengine'] = {
+                'available': False,
+                'reason': 'not_initialized'
+            }
+        
+        # 2. MobileNetV4
+        mobilenet_result = mobilenet_detector.predict(filepath)
+        results['mobilenet'] = {
+            'available': True,
+            'verdict': mobilenet_result['verdict'],
+            'confidence': mobilenet_result['confidence'],
+            'fake_probability': mobilenet_result['fake_probability'],
+            'real_probability': mobilenet_result['real_probability']
+        }
+        
+        # 3. Aggregate results
+        final_verdict, final_confidence, agreement = aggregate_dual_results(
+            results['sightengine'],
+            results['mobilenet']
+        )
+        
+        # Prepare response
+        response_data = {
+            'success': True,
+            'cached': False,
+            'detectors': {
+                'sightengine': results['sightengine'],
+                'mobilenet': results['mobilenet']
+            },
+            'final': {
+                'verdict': final_verdict,
+                'confidence': final_confidence,
+                'agreement': agreement
+            },
+            'api_usage': sightengine_api.get_usage_info() if sightengine_api else None
+        }
+        
+        # Save to database (if connected)
+        if db_connected:
+            try:
+                DetectionResult.create(
+                    file_hash=file_hash,
+                    filename=file.filename,
+                    content_type='image',
+                    result_data=response_data
+                )
+                print(f"✓ Saved to database: {file_hash[:16]}...")
+            except Exception as db_error:
+                print(f"⚠ Database save failed: {db_error}")
+        
+        # Clean up
+        os.remove(filepath)
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def aggregate_dual_results(sightengine_result, mobilenet_result):
+    """
+    Aggregate results from both detectors.
+    
+    Returns:
+        tuple: (verdict, confidence, agreement_level)
+    """
+    # If SightEngine unavailable, use MobileNet only
+    if not sightengine_result.get('available'):
+        return (
+            mobilenet_result['verdict'],
+            mobilenet_result['confidence'],
+            'single_detector'
+        )
+    
+    se_verdict = sightengine_result['verdict']
+    mn_verdict = mobilenet_result['verdict']
+    se_conf = sightengine_result['confidence']
+    mn_conf = mobilenet_result['confidence']
+    
+    # If both agree
+    if se_verdict == mn_verdict:
+        avg_conf = (se_conf + mn_conf) / 2
+        conf_diff = abs(se_conf - mn_conf)
+        
+        if conf_diff < 10:
+            agreement = 'strong_agreement'
+        else:
+            agreement = 'agreement'
+        
+        return (se_verdict, round(avg_conf, 2), agreement)
+    
+    # If disagree, use higher confidence
+    if se_conf > mn_conf:
+        return (se_verdict, se_conf, 'disagreement')
+    else:
+        return (mn_verdict, mn_conf, 'disagreement')
 
 
 @app.route('/api/history', methods=['GET'])
