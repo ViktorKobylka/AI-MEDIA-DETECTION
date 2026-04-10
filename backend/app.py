@@ -354,6 +354,39 @@ def detect_video():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{filename}")
         file.save(filepath)
         
+        # Calculate video hash for caching
+        video_hash = None
+        if db_connected:
+            with open(filepath, 'rb') as f:
+                video_hash = calculate_file_hash(f)
+            
+            # Check cache
+            existing_result = DetectionResult.find_by_hash(video_hash)
+            if existing_result:
+                print(f"✓ Cache hit for video hash: {video_hash[:16]}...")
+                os.remove(filepath)
+                
+                cached_response = {
+                    'success': True,
+                    'cached': True,
+                    'content_type': 'video',
+                    'verdict': existing_result.get('verdict'),
+                    'confidence': existing_result.get('confidence'),
+                    'fake_probability': existing_result.get('fake_probability'),
+                    'real_probability': existing_result.get('real_probability'),
+                    'video_info': existing_result.get('full_result', {}).get('video_info', {}),
+                    'analysis': existing_result.get('full_result', {}).get('analysis', {}),
+                    'agreement_level': existing_result.get('agreement_level'),
+                    'confidence_timeline': existing_result.get('full_result', {}).get('confidence_timeline', []),
+                    'suspicious_frames': existing_result.get('full_result', {}).get('suspicious_frames', []),
+                    'model_breakdown': existing_result.get('full_result', {}).get('model_breakdown', []),
+                    'processing_time_seconds': existing_result.get('full_result', {}).get('processing_time_seconds', 0),
+                    'frames_analyzed': existing_result.get('full_result', {}).get('frames_analyzed', 0),
+                    'timestamp': existing_result['timestamp'].isoformat()
+                }
+                
+                return jsonify(cached_response)
+        
         # Validate
         file_size = os.path.getsize(filepath)
         is_valid, error_msg = video_processor.validate_video(filepath, file_size)
@@ -445,13 +478,17 @@ def detect_video():
             )
             
             os.remove(first_frame_path)
+            
+            if first_frame_saved and first_frame_saved.get('saved'):
+                print(f"✓ First frame saved for retraining: {first_frame_saved['hash']} ({first_frame_saved['label']})")
         
         # Clean up video
         os.remove(filepath)
         
-        # Response
+        # Prepare response
         response_data = {
             'success': True,
+            'cached': False,
             'content_type': 'video',
             'verdict': aggregated['verdict'],
             'confidence': aggregated['confidence'],
@@ -467,6 +504,19 @@ def detect_video():
             'frames_analyzed': len(frames),
             'first_frame_saved': first_frame_saved
         }
+        
+        # Save to database (if connected)
+        if db_connected and video_hash:
+            try:
+                DetectionResult.create(
+                    file_hash=video_hash,
+                    filename=file.filename,  
+                    content_type='video',
+                    result_data=response_data
+                )
+                print(f"✓ Saved video to database: {video_hash[:16]}...")
+            except Exception as db_error:
+                print(f"⚠ Database save failed: {db_error}")
         
         return jsonify(response_data)
         

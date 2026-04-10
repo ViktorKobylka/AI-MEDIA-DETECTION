@@ -23,40 +23,55 @@ class DetectionResult:
         collection = get_detections_collection()
         
         # Extract core fields from result_data
-        final = result_data.get('final', {})
+        # For both images and videos, check top-level first
+        verdict = result_data.get('verdict')
+        confidence = result_data.get('confidence')
+        fake_prob = result_data.get('fake_probability')
+        real_prob = result_data.get('real_probability')
+        agreement = result_data.get('agreement_level')
+        
+        # For images, data is in 'final' key
+        if not verdict and 'final' in result_data:
+            final = result_data.get('final', {})
+            verdict = final.get('verdict')
+            confidence = final.get('confidence')
+            agreement = final.get('agreement')
+        
+        # Get detectors info
         detectors = result_data.get('detectors', {})
         
         document = {
             'file_hash': file_hash,
             'filename': filename,
             'content_type': content_type,
-            'verdict': final.get('verdict'),
-            'confidence': final.get('confidence'),
-            'fake_probability': None,  # Will calculate from detectors
-            'real_probability': None,
+            'verdict': verdict,
+            'confidence': confidence,
+            'fake_probability': fake_prob,
+            'real_probability': real_prob,
             'timestamp': datetime.now(),
             'full_result': result_data,
-            'agreement_level': final.get('agreement'),
+            'agreement_level': agreement,
             'individual_results': []
         }
         
-        # Calculate average probabilities from both detectors
-        fake_probs = []
-        real_probs = []
-        
-        if detectors.get('sightengine', {}).get('available'):
-            se = detectors['sightengine']
-            fake_probs.append(se.get('fake_probability', 0))
-            real_probs.append(se.get('real_probability', 0))
-        
-        if detectors.get('mobilenet', {}).get('available'):
-            mn = detectors['mobilenet']
-            fake_probs.append(mn.get('fake_probability', 0))
-            real_probs.append(mn.get('real_probability', 0))
-        
-        if fake_probs:
-            document['fake_probability'] = round(sum(fake_probs) / len(fake_probs), 2)
-            document['real_probability'] = round(sum(real_probs) / len(real_probs), 2)
+        # Calculate average probabilities from both detectors (for images)
+        if content_type == 'image':
+            fake_probs = []
+            real_probs = []
+            
+            if detectors.get('sightengine', {}).get('available'):
+                se = detectors['sightengine']
+                fake_probs.append(se.get('fake_probability', 0))
+                real_probs.append(se.get('real_probability', 0))
+            
+            if detectors.get('mobilenet', {}).get('available'):
+                mn = detectors['mobilenet']
+                fake_probs.append(mn.get('fake_probability', 0))
+                real_probs.append(mn.get('real_probability', 0))
+            
+            if fake_probs and not document['fake_probability']:
+                document['fake_probability'] = round(sum(fake_probs) / len(fake_probs), 2)
+                document['real_probability'] = round(sum(real_probs) / len(real_probs), 2)
         
         # Add individual detector results
         individual = []
@@ -74,6 +89,20 @@ class DetectionResult:
                 'verdict': detectors['mobilenet'].get('verdict'),
                 'confidence': detectors['mobilenet'].get('confidence')
             })
+        
+        # For videos, extract from model_breakdown if individual_results empty
+        if content_type == 'video' and not individual:
+            model_breakdown = result_data.get('model_breakdown', [])
+            for model in model_breakdown:
+                # Determine verdict based on fake_percentage
+                fake_pct = model.get('fake_percentage', 0)
+                model_verdict = 'FAKE' if fake_pct >= 50 else 'REAL'
+                
+                individual.append({
+                    'model': model.get('model'),
+                    'verdict': model_verdict,
+                    'confidence': round(100 - fake_pct if model_verdict == 'REAL' else fake_pct, 2)
+                })
         
         document['individual_results'] = individual
         
