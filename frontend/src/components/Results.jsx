@@ -1,6 +1,6 @@
 /**
  * Results Component
- * Displays detection results for images
+ * Вisplay for both fresh image detections and cached results
  */
 
 import React from 'react';
