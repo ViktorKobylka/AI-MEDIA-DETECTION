@@ -15,6 +15,12 @@ from database import db_config
 from models.db_models import DetectionResult
 from utils.hash_utils import calculate_file_hash
 
+# Initialize components
+sightengine_api = None
+mobilenet_detector = None
+data_collector = None
+db_connected = False
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -103,6 +109,62 @@ def cleanup_old_files():
         pass
 
 
+def aggregate_dual_results(se_result, mn_result):
+    """
+    Aggregate results from both detectors with SightEngine priority.
+    
+    Args:
+        se_result: SightEngine API result dict
+        mn_result: MobileNetV4 result dict
+    
+    Returns:
+        tuple: (verdict, confidence, agreement, fake_prob, real_prob)
+    """
+    se_available = se_result and se_result.get('available', False)
+    mn_available = mn_result and mn_result.get('available', False)
+    
+    # Determine agreement
+    if se_available and mn_available:
+        se_verdict = se_result.get('verdict')
+        mn_verdict = mn_result.get('verdict')
+        
+        if se_verdict == mn_verdict:
+            agreement = 'strong_agreement'
+        else:
+            agreement = 'disagreement'
+    elif se_available or mn_available:
+        agreement = 'single_detector'
+    else:
+        agreement = 'unknown'
+    
+    # SightEngine priority
+    if se_available:
+        verdict = se_result.get('verdict')
+        confidence = se_result.get('confidence')
+        fake_prob = se_result.get('fake_probability', 0)
+        real_prob = se_result.get('real_probability', 0)
+        
+        # If both agree, average the confidence and probabilities
+        if mn_available and se_result.get('verdict') == mn_result.get('verdict'):
+            confidence = (se_result.get('confidence', 0) + mn_result.get('confidence', 0)) / 2
+            fake_prob = (se_result.get('fake_probability', 0) + mn_result.get('fake_probability', 0)) / 2
+            real_prob = (se_result.get('real_probability', 0) + mn_result.get('real_probability', 0)) / 2
+            
+        return verdict, confidence, agreement, fake_prob, real_prob
+    
+    # Fallback to MobileNet
+    elif mn_available:
+        return (
+            mn_result.get('verdict'),
+            mn_result.get('confidence'),
+            agreement,
+            mn_result.get('fake_probability', 0),
+            mn_result.get('real_probability', 0)
+        )
+    
+    # Both unavailable
+    return 'UNCERTAIN', 0, 'unknown', 0, 0
+
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
@@ -171,8 +233,6 @@ def detect_mobilenet():
             os.remove(filepath)
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@app.route('/api/detect_dual', methods=['POST'])
 @app.route('/api/detect_dual', methods=['POST'])
 def detect_dual():
     """
@@ -300,8 +360,8 @@ def detect_dual():
             'data_collection': save_result
         }
         
-        # Save to database (only if SightEngine available)
-        if db_connected and sightengine_api:
+        # Save to database (only if SightEngine returned valid result)
+        if db_connected and se_result and se_result.get('available'):
             try:
                 DetectionResult.create(
                     file_hash=file_hash,
@@ -325,6 +385,7 @@ def detect_dual():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/detect_video', methods=['POST'])
 def detect_video():
@@ -439,8 +500,8 @@ def detect_video():
             
             mn_result = mobilenet_detector.predict(frame_path)
             
-            # Aggregate frame result
-            frame_verdict, frame_conf, frame_agreement = aggregate_dual_results(
+            # Aggregate frame result (returns 5 values)
+            frame_verdict, frame_conf, frame_agreement, frame_fake_prob, frame_real_prob = aggregate_dual_results(
                 se_result if se_result else {'available': False},
                 {
                     'available': True,
@@ -477,23 +538,26 @@ def detect_video():
         
         processing_time = time.time() - start_time
         
-        # Try to save first frame for retraining
+        # Try to save first frame for retraining (only if SightEngine available)
         first_frame_saved = None
         if data_collector and sightengine_api and aggregated['confidence'] > 85:
-            first_frame_path = os.path.join(app.config['UPLOAD_FOLDER'], f"first_{timestamp}.jpg")
-            frames[0].save(first_frame_path)
-            
-            first_frame_saved = data_collector.save_file(
-                file_path=first_frame_path,
-                label=aggregated['verdict'],
-                confidence=aggregated['confidence'],
-                source='sightengine'
-            )
-            
-            os.remove(first_frame_path)
-            
-            if first_frame_saved and first_frame_saved.get('saved'):
-                print(f"✓ First frame saved for retraining: {first_frame_saved['hash']} ({first_frame_saved['label']})")
+            # Check if SightEngine was actually used
+            first_frame_se = frame_results[0].get('detectors', {}).get('sightengine', {})
+            if first_frame_se.get('available'):
+                first_frame_path = os.path.join(app.config['UPLOAD_FOLDER'], f"first_{timestamp}.jpg")
+                frames[0].save(first_frame_path)
+                
+                first_frame_saved = data_collector.save_file(
+                    file_path=first_frame_path,
+                    label=aggregated['verdict'],
+                    confidence=aggregated['confidence'],
+                    source='sightengine'
+                )
+                
+                os.remove(first_frame_path)
+                
+                if first_frame_saved and first_frame_saved.get('saved'):
+                    print(f"✓ First frame saved for retraining: {first_frame_saved['hash']} ({first_frame_saved['label']})")
         
         # Clean up video
         os.remove(filepath)
@@ -518,12 +582,18 @@ def detect_video():
             'first_frame_saved': first_frame_saved
         }
         
-        # Save to database (if connected)
-        if db_connected and video_hash:
+        # Check if any frame used SightEngine
+        used_sightengine = any(
+            fr.get('detectors', {}).get('sightengine', {}).get('available', False)
+            for fr in frame_results
+        )
+        
+        # Save to database (only if SightEngine was used)
+        if db_connected and video_hash and used_sightengine:
             try:
                 DetectionResult.create(
                     file_hash=video_hash,
-                    filename=file.filename,  
+                    filename=file.filename,
                     content_type='video',
                     result_data=response_data
                 )
@@ -540,61 +610,6 @@ def detect_video():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-
-def aggregate_dual_results(se_result, mn_result):
-    """
-    Aggregate results from both detectors with SightEngine priority.
-    
-    Returns:
-        tuple: (verdict, confidence, agreement, fake_prob, real_prob)
-    """
-    se_available = se_result and se_result.get('available', False)
-    mn_available = mn_result and mn_result.get('available', False)
-    
-    # Determine agreement
-    if se_available and mn_available:
-        se_verdict = se_result.get('verdict')
-        mn_verdict = mn_result.get('verdict')
-        
-        if se_verdict == mn_verdict:
-            agreement = 'strong_agreement'
-        else:
-            agreement = 'disagreement'
-    elif se_available or mn_available:
-        agreement = 'single_detector'
-    else:
-        agreement = 'unknown'
-    
-    # SightEngine priority
-    if se_available:
-        verdict = se_result.get('verdict')
-        confidence = se_result.get('confidence')
-        fake_prob = se_result.get('fake_probability', 0)
-        real_prob = se_result.get('real_probability', 0)
-        
-        # If both agree, average the confidence
-        if mn_available and se_result.get('verdict') == mn_result.get('verdict'):
-            confidence = (se_result.get('confidence', 0) + mn_result.get('confidence', 0)) / 2
-            fake_prob = (se_result.get('fake_probability', 0) + mn_result.get('fake_probability', 0)) / 2
-            real_prob = (se_result.get('real_probability', 0) + mn_result.get('real_probability', 0)) / 2
-            
-        return verdict, confidence, agreement, fake_prob, real_prob
-    
-    # Fallback to MobileNet
-    elif mn_available:
-        return (
-            mn_result.get('verdict'),
-            mn_result.get('confidence'),
-            agreement,
-            mn_result.get('fake_probability', 0),
-            mn_result.get('real_probability', 0)
-        )
-    
-    # Both unavailable
-    return 'UNCERTAIN', 0, 'unknown', 0, 0
-    
-    
-
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
