@@ -401,7 +401,7 @@ def detect_video():
         
         # Extract frames
         start_time = time.time()
-        frames = video_processor.extract_frames(filepath, frames_per_second=1.0)
+        frames = video_processor.extract_frames(filepath, frames_per_second=0.1)
         
         if not frames:
             os.remove(filepath)
