@@ -313,6 +313,170 @@ def detect_dual():
             os.remove(filepath)
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/detect_video', methods=['POST'])
+def detect_video():
+    """
+    Video detection endpoint with dual detectors
+    
+    Request: multipart/form-data with 'video'
+    Response: JSON with aggregated results
+    """
+    if not mobilenet_detector:
+        return jsonify({'success': False, 'error': 'Detector not ready'}), 503
+    
+    if 'video' not in request.files:
+        return jsonify({'success': False, 'error': 'No video file provided'}), 400
+    
+    file = request.files['video']
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+    
+    if not allowed_video(file.filename):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid format. Allowed: {", ".join(app.config["ALLOWED_VIDEO_EXTENSIONS"])}'
+        }), 400
+    
+    filepath = None
+    
+    try:
+        from services.video_processor import VideoProcessor
+        from services.video_aggregator import VideoAggregator
+        import time
+        
+        video_processor = VideoProcessor()
+        video_aggregator = VideoAggregator()
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{filename}")
+        file.save(filepath)
+        
+        # Validate
+        file_size = os.path.getsize(filepath)
+        is_valid, error_msg = video_processor.validate_video(filepath, file_size)
+        
+        if not is_valid:
+            os.remove(filepath)
+            return jsonify({'success': False, 'error': error_msg}), 400
+        
+        # Get info
+        video_info = video_processor.get_video_info(filepath)
+        print(f"Processing video: {video_info}")
+        
+        # Extract frames
+        start_time = time.time()
+        frames = video_processor.extract_frames(filepath, frames_per_second=1.0)
+        
+        if not frames:
+            os.remove(filepath)
+            return jsonify({'success': False, 'error': 'Failed to extract frames'}), 500
+        
+        print(f"Extracted {len(frames)} frames")
+        
+        # Analyze each frame with dual detection
+        frame_results = []
+        
+        for idx, frame in enumerate(frames):
+            print(f"Analyzing frame {idx + 1}/{len(frames)}...")
+            
+            # Save frame temporarily
+            frame_path = os.path.join(app.config['UPLOAD_FOLDER'], f"frame_{timestamp}_{idx}.jpg")
+            frame.save(frame_path)
+            
+            # Run dual detection on frame
+            se_result = None
+            if sightengine_api:
+                se_result = sightengine_api.detect_fake(frame_path)
+            
+            mn_result = mobilenet_detector.predict(frame_path)
+            
+            # Aggregate frame result
+            frame_verdict, frame_conf, frame_agreement = aggregate_dual_results(
+                se_result if se_result else {'available': False},
+                {
+                    'available': True,
+                    'verdict': mn_result['verdict'],
+                    'confidence': mn_result['confidence'],
+                    'fake_probability': mn_result['fake_probability'],
+                    'real_probability': mn_result['real_probability']
+                }
+            )
+            
+            frame_results.append({
+                'frame_index': idx,
+                'detectors': {
+                    'sightengine': se_result if se_result else {'available': False},
+                    'mobilenet': {
+                        'available': True,
+                        'verdict': mn_result['verdict'],
+                        'confidence': mn_result['confidence']
+                    }
+                },
+                'final': {
+                    'verdict': frame_verdict,
+                    'confidence': frame_conf,
+                    'agreement': frame_agreement
+                }
+            })
+            
+            # Clean up frame
+            os.remove(frame_path)
+        
+        # Aggregate all frames
+        print("Aggregating results...")
+        aggregated = video_aggregator.aggregate_frame_results(frame_results)
+        
+        processing_time = time.time() - start_time
+        
+        # Try to save first frame for retraining
+        first_frame_saved = None
+        if data_collector and sightengine_api and aggregated['confidence'] > 85:
+            first_frame_path = os.path.join(app.config['UPLOAD_FOLDER'], f"first_{timestamp}.jpg")
+            frames[0].save(first_frame_path)
+            
+            first_frame_saved = data_collector.save_file(
+                file_path=first_frame_path,
+                label=aggregated['verdict'],
+                confidence=aggregated['confidence'],
+                source='sightengine'
+            )
+            
+            os.remove(first_frame_path)
+        
+        # Clean up video
+        os.remove(filepath)
+        
+        # Response
+        response_data = {
+            'success': True,
+            'content_type': 'video',
+            'verdict': aggregated['verdict'],
+            'confidence': aggregated['confidence'],
+            'fake_probability': aggregated['fake_probability'],
+            'real_probability': aggregated['real_probability'],
+            'video_info': video_info,
+            'analysis': aggregated['analysis'],
+            'agreement_level': aggregated['agreement_level'],
+            'confidence_timeline': aggregated['confidence_timeline'],
+            'suspicious_frames': aggregated['suspicious_frames'],
+            'model_breakdown': aggregated['model_breakdown'],
+            'processing_time_seconds': round(processing_time, 2),
+            'frames_analyzed': len(frames),
+            'first_frame_saved': first_frame_saved
+        }
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def aggregate_dual_results(sightengine_result, mobilenet_result):
     """
