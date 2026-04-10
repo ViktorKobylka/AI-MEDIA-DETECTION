@@ -2,7 +2,6 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
-import History from './pages/History';
 import './App.css';
 
 
@@ -30,7 +29,6 @@ function App() {
         <div>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/history" element={<History />} />
             <Route path="/statistics" element={
               <div className="container text-center py-5">
                 <h2>Statistics</h2>

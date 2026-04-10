@@ -27,14 +27,6 @@ const Navbar = () => {
               Home
             </Nav.Link>
             
-            <Nav.Link 
-              as={Link} 
-              to="/history" 
-              active={location.pathname === '/history'}
-              className="px-4"
-            >
-              History
-            </Nav.Link>
             
             <Nav.Link 
               as={Link} 
