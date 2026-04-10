@@ -173,6 +173,7 @@ def detect_mobilenet():
 
 
 @app.route('/api/detect_dual', methods=['POST'])
+@app.route('/api/detect_dual', methods=['POST'])
 def detect_dual():
     """
     Dual detection endpoint: SightEngine + MobileNetV4
@@ -203,6 +204,9 @@ def detect_dual():
     filepath = None
     
     try:
+        import time
+        start_time = time.time()
+        
         # Calculate file hash
         file_hash = calculate_file_hash(file)
         
@@ -211,16 +215,23 @@ def detect_dual():
             existing_result = DetectionResult.find_by_hash(file_hash)
             if existing_result:
                 print(f"✓ Cache hit for hash: {file_hash[:16]}...")
-                return jsonify({
+                
+                # Reconstruct full response from cached data
+                cached_response = {
                     'success': True,
                     'cached': True,
-                    'verdict': existing_result['verdict'],
-                    'confidence': existing_result['confidence'],
-                    'detectors': existing_result.get('detectors', {}),
-                    'final': existing_result.get('final', {}),
-                    'api_usage': existing_result.get('api_usage'),
+                    'content_type': 'image',
+                    'verdict': existing_result.get('verdict'),
+                    'confidence': existing_result.get('confidence'),
+                    'fake_probability': existing_result.get('fake_probability', 0),
+                    'real_probability': existing_result.get('real_probability', 0),
+                    'agreement_level': existing_result.get('agreement_level'),
+                    'detectors': existing_result.get('full_result', {}).get('detectors', {}),
+                    'processing_time_seconds': existing_result.get('full_result', {}).get('processing_time_seconds', 0),
                     'timestamp': existing_result['timestamp'].isoformat()
-                })
+                }
+                
+                return jsonify(cached_response)
         
         # Clean up old files
         cleanup_old_files()
@@ -232,66 +243,65 @@ def detect_dual():
         file.save(filepath)
         
         # Run both detectors
-        results = {}
+        se_result = None
         
         # 1. SightEngine API
         if sightengine_api:
-            sightengine_result = sightengine_api.detect_fake(filepath)
-            results['sightengine'] = sightengine_result
-        else:
-            results['sightengine'] = {
-                'available': False,
-                'reason': 'not_initialized'
-            }
+            se_result = sightengine_api.detect_fake(filepath)
         
         # 2. MobileNetV4
-        mobilenet_result = mobilenet_detector.predict(filepath)
-        results['mobilenet'] = {
-            'available': True,
-            'verdict': mobilenet_result['verdict'],
-            'confidence': mobilenet_result['confidence'],
-            'fake_probability': mobilenet_result['fake_probability'],
-            'real_probability': mobilenet_result['real_probability']
-        }
+        mn_result = mobilenet_detector.predict(filepath)
         
-        # 3. Aggregate results
-        final_verdict, final_confidence, agreement = aggregate_dual_results(
-            results['sightengine'],
-            results['mobilenet']
+        # 3. Aggregate results with new format
+        final_verdict, final_confidence, agreement, fake_prob, real_prob = aggregate_dual_results(
+            se_result if se_result else {'available': False},
+            {
+                'available': True,
+                'verdict': mn_result['verdict'],
+                'confidence': mn_result['confidence'],
+                'fake_probability': mn_result['fake_probability'],
+                'real_probability': mn_result['real_probability']
+            }
         )
-
+        
+        # 4. Save for retraining (only if SightEngine available)
         save_result = None
-        if data_collector and results['sightengine'].get('available'):
-            se_result = results['sightengine']
+        if data_collector and se_result and se_result.get('available'):
             save_result = data_collector.save_file(
                 file_path=filepath,
                 label=se_result['verdict'],
                 confidence=se_result['confidence'],
                 source='sightengine'
             )
-            if save_result['saved']:
-                print(f"✓ File saved for retraining: {save_result['hash']} ({save_result['label']})") 
-        
+            if save_result and save_result.get('saved'):
+                print(f"✓ File saved for retraining: {save_result['hash']} ({save_result['label']})")
         
         # Prepare response
         response_data = {
             'success': True,
             'cached': False,
+            'content_type': 'image',
+            'verdict': final_verdict,
+            'confidence': final_confidence,
+            'fake_probability': fake_prob,
+            'real_probability': real_prob,
+            'agreement_level': agreement,
             'detectors': {
-                'sightengine': results['sightengine'],
-                'mobilenet': results['mobilenet']
+                'sightengine': se_result if se_result else {'available': False},
+                'mobilenet': {
+                    'available': True,
+                    'verdict': mn_result['verdict'],
+                    'confidence': mn_result['confidence'],
+                    'fake_probability': mn_result['fake_probability'],
+                    'real_probability': mn_result['real_probability']
+                }
             },
-            'final': {
-                'verdict': final_verdict,
-                'confidence': final_confidence,
-                'agreement': agreement
-            },
-            'api_usage': sightengine_api.get_usage_info() if sightengine_api else None,
+            'processing_time_seconds': round(time.time() - start_time, 2),
             'data_collection': save_result
         }
         
-        # Save to database (if connected)
-        if db_connected:
+        # Save to database (only if SightEngine available)
+        if db_connected and sightengine_api:
             try:
                 DetectionResult.create(
                     file_hash=file_hash,
@@ -311,6 +321,9 @@ def detect_dual():
     except Exception as e:
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
+        print(f"Error in detect_dual: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/detect_video', methods=['POST'])
@@ -528,43 +541,59 @@ def detect_video():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def aggregate_dual_results(sightengine_result, mobilenet_result):
+def aggregate_dual_results(se_result, mn_result):
     """
-    Aggregate results from both detectors.
-    SightEngine has priority when available.
+    Aggregate results from both detectors with SightEngine priority.
     
     Returns:
-        tuple: (verdict, confidence, agreement_level)
+        tuple: (verdict, confidence, agreement, fake_prob, real_prob)
     """
-    # If SightEngine unavailable, use MobileNet only
-    if not sightengine_result.get('available'):
-        return (
-            mobilenet_result['verdict'],
-            mobilenet_result['confidence'],
-            'single_detector'
-        )
+    se_available = se_result and se_result.get('available', False)
+    mn_available = mn_result and mn_result.get('available', False)
     
-    # SightEngine available - it has priority
-    se_verdict = sightengine_result['verdict']
-    mn_verdict = mobilenet_result['verdict']
-    se_conf = sightengine_result['confidence']
-    mn_conf = mobilenet_result['confidence']
-    
-    # Check agreement
-    if se_verdict == mn_verdict:
-        # Both agree - use SightEngine verdict with averaged confidence
-        avg_conf = (se_conf + mn_conf) / 2
-        conf_diff = abs(se_conf - mn_conf)
+    # Determine agreement
+    if se_available and mn_available:
+        se_verdict = se_result.get('verdict')
+        mn_verdict = mn_result.get('verdict')
         
-        if conf_diff < 10:
+        if se_verdict == mn_verdict:
             agreement = 'strong_agreement'
         else:
-            agreement = 'agreement'
-        
-        return (se_verdict, round(avg_conf, 2), agreement)
+            agreement = 'disagreement'
+    elif se_available or mn_available:
+        agreement = 'single_detector'
     else:
-        # Disagree - SightEngine takes priority
-        return (se_verdict, se_conf, 'disagreement')
+        agreement = 'unknown'
+    
+    # SightEngine priority
+    if se_available:
+        verdict = se_result.get('verdict')
+        confidence = se_result.get('confidence')
+        fake_prob = se_result.get('fake_probability', 0)
+        real_prob = se_result.get('real_probability', 0)
+        
+        # If both agree, average the confidence
+        if mn_available and se_result.get('verdict') == mn_result.get('verdict'):
+            confidence = (se_result.get('confidence', 0) + mn_result.get('confidence', 0)) / 2
+            fake_prob = (se_result.get('fake_probability', 0) + mn_result.get('fake_probability', 0)) / 2
+            real_prob = (se_result.get('real_probability', 0) + mn_result.get('real_probability', 0)) / 2
+            
+        return verdict, confidence, agreement, fake_prob, real_prob
+    
+    # Fallback to MobileNet
+    elif mn_available:
+        return (
+            mn_result.get('verdict'),
+            mn_result.get('confidence'),
+            agreement,
+            mn_result.get('fake_probability', 0),
+            mn_result.get('real_probability', 0)
+        )
+    
+    # Both unavailable
+    return 'UNCERTAIN', 0, 'unknown', 0, 0
+    
+    
 
 
 @app.route('/api/history', methods=['GET'])
