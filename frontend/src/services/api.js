@@ -26,7 +26,7 @@ export const detectImage = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await axios.post('/api/detect_dual', formData, {
+  const response = await axios.post(`${API_BASE_URL}/detect_dual`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
