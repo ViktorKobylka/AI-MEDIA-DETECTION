@@ -36,6 +36,17 @@ const Navbar = () => {
             >
               Statistics
             </Nav.Link>
+
+
+            <Nav.Link 
+              as={Link} 
+              to="/about" 
+              active={location.pathname === '/about'}
+              className="px-4"
+            >
+              About
+            </Nav.Link>
+            
           </Nav>
         </BootstrapNavbar.Collapse>
       </Container>

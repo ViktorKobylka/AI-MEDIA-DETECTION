@@ -6,6 +6,8 @@ import os
 import shutil
 import json
 import subprocess
+import signal
+import time
 from pathlib import Path
 from datetime import datetime
 import random
@@ -384,6 +386,50 @@ class RetrainingPipeline:
         
         return True, "Performance acceptable"
     
+    def reload_backend(self):
+        """
+        Reload Gunicorn backend to load new model.
+        Sends SIGHUP signal for graceful reload.
+        
+        Returns:
+            bool: Success status
+        """
+        pidfile = Path('/tmp/gunicorn_deepfake.pid')
+        
+        if not pidfile.exists():
+            print("  ⚠ PID file not found - backend may not be running")
+            return False
+        
+        try:
+            pid = int(pidfile.read_text().strip())
+            
+            # Send SIGHUP for graceful reload
+            os.kill(pid, signal.SIGHUP)
+            
+            # Wait a moment for reload
+            time.sleep(2)
+            
+            # Verify process still exists
+            try:
+                os.kill(pid, 0)  # Signal 0 just checks if process exists
+                return True
+            except OSError:
+                print("  ⚠ Backend process not found after reload")
+                return False
+                
+        except ValueError:
+            print("  ⚠ Invalid PID in file")
+            return False
+        except ProcessLookupError:
+            print("  ⚠ Backend process not found")
+            return False
+        except PermissionError:
+            print("  ⚠ Permission denied to reload backend")
+            return False
+        except Exception as e:
+            print(f"  ⚠ Error reloading backend: {e}")
+            return False
+    
     def log_retraining(self, event, details):
         """Log event to file"""
         if self.log_file.exists():
@@ -486,6 +532,14 @@ class RetrainingPipeline:
                     'deployed': True,
                     'reason': reason
                 })
+                
+                # Reload backend to load new model
+                print("\nReloading backend...")
+                reload_success = self.reload_backend()
+                if reload_success:
+                    print("✓ Backend reloaded with new model")
+                else:
+                    print("⚠ Backend reload failed - manual restart required")
                 
                 # Start new round
                 from services.data_collector import DataCollector

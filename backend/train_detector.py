@@ -21,7 +21,7 @@ log = logging.getLogger("train")
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DATASET_DIR = Path("dataset_v2")
+DATASET_DIR = Path("dataset_orig")
 MODEL_PATH  = Path("detector_model.pth")
 HISTORY_PATH = Path("training_history.json")
 
