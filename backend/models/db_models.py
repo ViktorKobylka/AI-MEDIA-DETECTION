@@ -230,3 +230,68 @@ class DetectionResult:
         collection = get_detections_collection()
         result = collection.delete_many({})
         return result.deleted_count
+    
+    @staticmethod
+    def get_statistics():
+        """
+        Get overall detection statistics including timeline
+        
+        Returns:
+            dict: Statistics summary with timeline data
+        """
+        collection = get_detections_collection()
+        
+        if collection is None:
+            return None
+        
+        # Basic counts
+        total = collection.count_documents({})
+        fake_count = collection.count_documents({'verdict': 'FAKE'})
+        real_count = collection.count_documents({'verdict': 'REAL'})
+        
+        # Timeline data (last 30 days)
+        from datetime import datetime, timedelta
+        
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        
+        pipeline = [
+            {'$match': {'timestamp': {'$gte': thirty_days_ago}}},
+            {'$group': {
+                '_id': {
+                    'date': {'$dateToString': {'format': '%Y-%m-%d', 'date': '$timestamp'}},
+                    'verdict': '$verdict'
+                },
+                'count': {'$sum': 1}
+            }},
+            {'$sort': {'_id.date': 1}}
+        ]
+        
+        try:
+            results = list(collection.aggregate(pipeline))
+            
+            # Transform to timeline format
+            timeline_dict = {}
+            for item in results:
+                date = item['_id']['date']
+                verdict = item['_id']['verdict']
+                count = item['count']
+                
+                if date not in timeline_dict:
+                    timeline_dict[date] = {'date': date, 'fake': 0, 'real': 0}
+                
+                if verdict == 'FAKE':
+                    timeline_dict[date]['fake'] = count
+                elif verdict == 'REAL':
+                    timeline_dict[date]['real'] = count
+            
+            timeline = list(timeline_dict.values())
+        except Exception as e:
+            print(f"Timeline aggregation error: {e}")
+            timeline = []
+        
+        return {
+            'total_detections': total,
+            'fake_count': fake_count,
+            'real_count': real_count,
+            'timeline': timeline  
+        }

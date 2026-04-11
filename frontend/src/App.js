@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
+import Statistics from './pages/Statistics';
 import './App.css';
 
 
@@ -29,12 +30,7 @@ function App() {
         <div>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/statistics" element={
-              <div className="container text-center py-5">
-                <h2>Statistics</h2>
-                <p className="text-muted">Coming soon...</p>
-              </div>
-            } />
+            <Route path="/statistics" element={<Statistics />} />
           </Routes>
         </div>
 
