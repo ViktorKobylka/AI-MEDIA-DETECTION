@@ -72,7 +72,7 @@ const Statistics = () => {
   const totalCollected = collection?.total_collected || 0;
   const realCollected = collection?.real_collected || 0;
   const fakeCollected = collection?.fake_collected || 0;
-  const targetFiles = 100;
+  const targetFiles = 400;
   const collectionProgress = (totalCollected / targetFiles * 100).toFixed(1);
 
   // Pie chart data
@@ -248,13 +248,13 @@ const Statistics = () => {
                         <i className="bi bi-check-circle-fill me-1"></i>
                         Real Files
                       </span>
-                      <strong>{realCollected} / 50</strong>
+                      <strong>{realCollected} / 200</strong>
                     </div>
                     <ProgressBar 
                       variant="success" 
-                      now={(realCollected / 50) * 100} 
+                      now={(realCollected / 200) * 100} 
                       style={{ height: '15px' }}
-                      label={realCollected > 5 ? `${realCollected}` : ''}
+                      label={realCollected > 10 ? `${realCollected}` : ''}
                     />
                   </div>
 
@@ -264,13 +264,13 @@ const Statistics = () => {
                         <i className="bi bi-x-circle-fill me-1"></i>
                         Fake Files
                       </span>
-                      <strong>{fakeCollected} / 50</strong>
+                      <strong>{fakeCollected} / 200</strong>
                     </div>
                     <ProgressBar 
                       variant="danger" 
-                      now={(fakeCollected / 50) * 100} 
+                      now={(fakeCollected / 200) * 100} 
                       style={{ height: '15px' }}
-                      label={fakeCollected > 5 ? `${fakeCollected}` : ''}
+                      label={fakeCollected > 10 ? `${fakeCollected}` : ''}
                     />
                   </div>
                 </Col>
@@ -293,13 +293,6 @@ const Statistics = () => {
                     </div>
                   </div>
 
-                  <div className="mb-3">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <span className="fw-bold">Last Retraining:</span>
-                      <span className="text-muted">Never</span>
-                    </div>
-                  </div>
-
                   <div className="mb-4">
                     <div className="d-flex justify-content-between align-items-center mb-2">
                       <span className="fw-bold">Completed Rounds:</span>
@@ -312,8 +305,9 @@ const Statistics = () => {
                   <Alert variant="info" className="mb-0">
                     <i className="bi bi-info-circle me-2"></i>
                     <small>
-                      <strong>How it works:</strong> When 100 files are collected (50 real + 50 fake), 
-                      the system automatically triggers retraining.
+                      <strong>How it works:</strong> When 400 files are collected (200 real + 200 fake), 
+                      the system automatically triggers retraining using experience replay 
+                      to prevent catastrophic forgetting. Check runs at 3:00 AM daily.
                     </small>
                   </Alert>
                 </Col>

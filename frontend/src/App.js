@@ -41,10 +41,10 @@ function App() {
           <div className="mb-3">
             <h6 className="text-muted mb-2">About This Application</h6>
             <p className="text-muted mb-1" style={{ fontSize: '0.9rem' }}>
-              This system detects AI-generated images, videos using advanced ensemble learning.
+              AI-powered deepfake detection system with dual-detector architecture and continual learning.
             </p>
             <p className="text-muted mb-1" style={{ fontSize: '0.9rem' }}>
-              <strong>Detects:</strong> StyleGAN faces, face swaps, GAN-generated images, videos and photorealistic deepfakes
+              <strong>Detects:</strong> AI-generated faces, deepfakes and synthetic media
             </p>
           </div>
         </div>

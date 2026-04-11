@@ -2,7 +2,7 @@
 Manages collection of user-uploaded files for model retraining.
 
 Limits:
-- 100 files total (50 real + 50 fake)
+- 400 files total (200 real + 200 fake)
 - High confidence only (>85%)
 - Hash-based duplicate detection
 - Labels from SightEngine API
@@ -65,8 +65,8 @@ class DataCollector:
         """Check if we can save more files of this label"""
         info = self.get_current_round_info()
         
-        REAL_LIMIT = 50
-        FAKE_LIMIT = 50
+        REAL_LIMIT = 200
+        FAKE_LIMIT = 200
         
         if label == 'REAL':
             return info['real_count'] < REAL_LIMIT
@@ -110,7 +110,7 @@ class DataCollector:
                 'saved': False,
                 'reason': 'limit_reached',
                 'current_count': info[f'{label.lower()}_count'],
-                'limit': 50
+                'limit': 200
             }
         
         # Check confidence threshold
@@ -154,9 +154,9 @@ class DataCollector:
         }
     
     def is_ready_for_retraining(self):
-        """Check if we have 100 files (50 real + 50 fake)"""
+        """Check if we have 400 files (200 real + 200 fake)"""
         info = self.get_current_round_info()
-        return info['real_count'] >= 50 and info['fake_count'] >= 50
+        return info['real_count'] >= 200 and info['fake_count'] >= 200
     
     def start_new_round(self):
         """Start new collection round after retraining"""
@@ -187,14 +187,14 @@ class DataCollector:
         return {
             'current_round': self.metadata['current_round'],
             'real_collected': info['real_count'],
-            'real_limit': 50,
-            'real_percentage': round((info['real_count'] / 50) * 100, 1),
+            'real_limit': 200,
+            'real_percentage': round((info['real_count'] / 200) * 100, 1),
             'fake_collected': info['fake_count'],
-            'fake_limit': 50,
-            'fake_percentage': round((info['fake_count'] / 50) * 100, 1),
+            'fake_limit': 200,
+            'fake_percentage': round((info['fake_count'] / 200) * 100, 1),
             'total_collected': info['total'],
-            'total_limit': 100,
-            'percentage': round((info['total'] / 100) * 100, 1),
+            'total_limit': 400,
+            'percentage': round((info['total'] / 400) * 100, 1),
             'ready_for_retraining': self.is_ready_for_retraining(),
             'all_time_total': self.metadata['total_collected'],
             'status': info['status']
@@ -210,8 +210,8 @@ if __name__ == "__main__":
     print("Data Collection Statistics")
     print("="*50)
     print(f"Round: {stats['current_round']}")
-    print(f"Real: {stats['real_collected']}/50 ({stats['real_percentage']}%)")
-    print(f"Fake: {stats['fake_collected']}/50 ({stats['fake_percentage']}%)")
-    print(f"Total: {stats['total_collected']}/100 ({stats['percentage']}%)")
+    print(f"Real: {stats['real_collected']}/200 ({stats['real_percentage']}%)")
+    print(f"Fake: {stats['fake_collected']}/200 ({stats['fake_percentage']}%)")
+    print(f"Total: {stats['total_collected']}/400 ({stats['percentage']}%)")
     print(f"Ready: {stats['ready_for_retraining']}")
     print("="*50)
