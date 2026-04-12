@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, ProgressBar, Spinner, Alert } from 'react-bootstrap';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import api from '../services/api';
+import { getStatistics } from '../services/api';
 
 const Statistics = () => {
   const [loading, setLoading] = useState(true);
@@ -21,7 +21,7 @@ const Statistics = () => {
     try {
       setLoading(true);
       
-      const response = await api.get('/statistics');
+      const response = await getStatistics();
       
       if (response.success) {
         setStats(response.statistics);
