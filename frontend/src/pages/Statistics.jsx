@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, ProgressBar, Spinner, Alert } from 'react-bootstrap';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import api from '../services/api';
 
 const Statistics = () => {
   const [loading, setLoading] = useState(true);
@@ -20,19 +21,18 @@ const Statistics = () => {
     try {
       setLoading(true);
       
-      // Fetch statistics
-      const statsResponse = await fetch('/api/statistics');
-      const statsData = await statsResponse.json();
+      const response = await api.get('/statistics');
       
-      if (statsData.success) {
-        setStats(statsData.statistics);
+      if (response.success) {
+        setStats(response.statistics);
       } else {
         setError('Failed to load statistics');
       }
       
       setLoading(false);
     } catch (err) {
-      setError(err.message);
+      console.error('Statistics error:', err);
+      setError(err.message || 'Failed to load statistics');
       setLoading(false);
     }
   };
