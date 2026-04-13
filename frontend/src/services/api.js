@@ -43,7 +43,7 @@ export const detectVideo = async (file) => {
   const formData = new FormData();
   formData.append('video', file);
 
-  const response = await axios.post('/api/detect_video', formData, {
+  const response = await axios.post(`${API_BASE_URL}/detect_dual`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

@@ -1,0 +1,14 @@
+{
+  "current_round": 1,
+  "rounds": {
+    "1": {
+      "real_count": 0,
+      "fake_count": 0,
+      "total": 0,
+      "hashes": [],
+      "started": "2026-04-13T15:25:40.750373",
+      "status": "collecting"
+    }
+  },
+  "total_collected": 0
+}
