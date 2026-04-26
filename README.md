@@ -7,7 +7,7 @@ Final Year Project - AI-powered deepfake detection with continual learning and d
 A production-ready web application that detects AI-generated images and videos using an ensemble of vision transformers and continual learning for autonomous model improvement.
 
 **Live Demo:** [aimediadetection.com](https://www.aimediadetection.com)
-**Video Demonstration:** [ViktorKobylkaScreencast.mp4](https://atlantictu-my.sharepoint.com/:v:/g/personal/g00425163_atu_ie/IQA2JhLLoPgnQ77P5frNf8uAAU6U1W_yBmOeFf9cMoTs8HY?e=FIQskD)  
+**Video Demonstration:** [ViktorKobylkaScreencast.mp4](https://atlantictu-my.sharepoint.com/:v:/g/personal/g00425163_atu_ie/IQA2JhLLoPgnQ77P5frNf8uAAU6U1W_yBmOeFf9cMoTs8HY?e=GkNHHF)  
 **Training Dataset (14,001 images):** [dataset_orig](https://atlantictu-my.sharepoint.com/:f:/g/personal/g00425163_atu_ie/IgB2w1Vmcj8oQakS5jky9EZpARVmNPhhrycsrPEF-AlBnss?e=WT2A3n) | **Validation Dataset (250 images):** [dataset_val](https://atlantictu-my.sharepoint.com/:f:/g/personal/g00425163_atu_ie/IgD8-qTcQpaiTqg2S6O_qssQAVe8Fu8deD4iOCabK5xK8Ho?e=LSz7O6)
 
 ## Architecture
